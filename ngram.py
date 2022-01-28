@@ -105,7 +105,7 @@ class NgramModel(ModelI):
         delta = 1+self._padLen-n        # len(sent)+delta == ngrams in sent
 
         if estimator is None:
-            assert (estimator_args is ()) and (estimator_kwargs=={}),\
+            assert (estimator_args==()) and (estimator_kwargs=={}),\
                    "estimator_args (%s) or _kwargs supplied (%s), but no estimator"%(estimator_args,estimator_kwargs)
             estimator = lambda fdist, bins: MLEProbDist(fdist)
 
@@ -299,7 +299,7 @@ class NgramModel(ModelI):
             one=self._generate_one(text)
             text.append(one)
             if one=='</s>' or i==num_words-1:
-                if self._lpad is not ():
+                if self._lpad!=():
                     res.append(list(self._lpad)[:(len(self._lpad)+len(context))-(self._n-2)]+text)
                 else:
                     res.append(text)
