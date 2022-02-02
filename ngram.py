@@ -14,7 +14,6 @@ from nltk.probability import (ConditionalProbDist, ConditionalFreqDist,
 
 from nltk.util import ngrams as ingrams
 
-from nltk import compat
 try:
     from api import *
 except ImportError:
