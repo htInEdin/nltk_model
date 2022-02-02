@@ -45,7 +45,6 @@ def _estimator(fdist, bins):
     res.check()
     return res
 
-@compat.python_2_unicode_compatible
 class NgramModel(ModelI):
     """
     A processing interface for assigning a probability to the next word.
@@ -116,7 +115,7 @@ class NgramModel(ModelI):
         # Coerce to list of list -- note that this means to train charGrams,
         #  requires exploding the words ahead of time 
         if train is not None:
-            if isinstance(train[0], compat.string_types):
+            if isinstance(train[0],str):
                 train = [train]
                 self._W=1
             elif not isinstance(train[0],collections.abc.Sequence):
@@ -215,7 +214,7 @@ class NgramModel(ModelI):
         :param context: the context the word is in
         :type context: list(str)
         """
-        assert(isinstance(word,compat.string_types))
+        assert(isinstance(word,str))
         context = tuple(context)
         if self.is_unigram_model:
             if not(self._model.SUM_TO_ONE):
