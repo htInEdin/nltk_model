@@ -359,8 +359,8 @@ class NgramModel(ModelI):
         :type pad_right: bool
         """
 
-        return pow(2.0, self.entropy(text), pad_left=pad_left,
-                   pad_right=pad_right, perItem=True)
+        return pow(2.0, self.entropy(text, pad_left=pad_left,
+                   pad_right=pad_right, perItem=True))
 
     def dump(self, file, logBase=None, precision=7):
         """Dump this model in SRILM/ARPA/Doug Paul format
