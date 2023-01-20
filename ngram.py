@@ -102,7 +102,7 @@ class NgramModel(ModelI):
         self._N=0
         delta = 1+self._padLen-n        # len(sent)+delta == ngrams in sent
 
-        if estimator is None:
+        if estimator == None:
             assert (estimator_args==()) and (estimator_kwargs=={}),\
                    "estimator_args (%s) or _kwargs supplied (%s), but no estimator"%(estimator_args,estimator_kwargs)
             estimator = lambda fdist, bins: MLEProbDist(fdist)
@@ -113,7 +113,7 @@ class NgramModel(ModelI):
         self._W = len(train)
         # Coerce to list of list -- note that this means to train charGrams,
         #  requires exploding the words ahead of time 
-        if train is not None:
+        if train != None:
             if isinstance(train[0],str):
                 train = [train]
                 self._W=1
@@ -416,7 +416,7 @@ class NgramModel(ModelI):
             for k in sorted(pd.samples()):
                 _writeProb(file,logBase,precision,pd.prob(k))
                 file.write('\t%s %s'%(ctxtString,k))
-                if alphas is not None:
+                if alphas != None:
                     file.write('\t')
                     _writeProb(file,logBase,precision,alphas[ctxt+(k,)])
                 file.write('\n')
@@ -440,7 +440,7 @@ class NgramModel(ModelI):
 
 def _writeProb(file,logBase,precision,p):
     file.write('%.*g'%(precision,
-                       p if logBase is None else log(p,logBase)))
+                       p if logBase == None else log(p,logBase)))
 
 
 class LgramModel(NgramModel):
@@ -453,7 +453,7 @@ class LgramModel(NgramModel):
         :param train: List of strings, which will be converted to list of lists of characters, but more efficiently
         :type train: iter(str)
         """
-        if estimator is None:
+        if estimator == None:
             assert (not(estimator_args)) and (not(estimator_kwargs)),\
                    "estimator_args (%s) or _kwargs (%s) supplied, but no estimator"%(estimator_args,estimator_kwargs)
             estimator=_estimator

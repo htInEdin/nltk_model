@@ -23,7 +23,7 @@ class LgramModel(NgramModel):
         :param train: List of strings, which will be converted to list of lists of characters, but more efficiently
         :type train: iter(str)
         """
-        if estimator is None:
+        if estimator == None:
             assert (not (estimator_args)) and (not (estimator_kwargs)), \
                 "estimator_args (%s) or _kwargs (%s) supplied, but no estimator" % (estimator_args, estimator_kwargs)
             estimator = self._estimator
