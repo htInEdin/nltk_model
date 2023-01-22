@@ -219,26 +219,29 @@ class NgramModel(ModelI):
             if not(self._model.SUM_TO_ONE):
                 # Smoothing models should do the right thing for unigrams
                 #  even if they're 'absent'
-                return self._model.prob(word)
+                res = self._model.prob(word)
             else:
                 try:
-                    return self._model.prob(word)
+                    res = self._model.prob(word)
                 except:
                     raise RuntimeError("No probability mass assigned"
                                        "to unigram %s" % (word))
-        if context + (word,) in self._ngrams:
-            return self[context].prob(word)
+        elif context + (word,) in self._ngrams:
+            res = self[context].prob(word)
         else:
             alpha=self._alpha(context)
             if alpha>0.0:
                 if verbose:
                     print("backing off for %s"%(context+(word,),))
-                return alpha * self._backoff.prob(word, context[1:],verbose)
+                res = alpha * self._backoff.prob(word, context[1:],verbose)
             else:
                 if verbose:
                     print('no backoff for "%s" as model doesn\'t do any smoothing so prob=0.0'%word)
-                return alpha
-
+                res = alpha
+        if verbose:
+            print("p(%s|%s) = [%s-gram] %7f"%(word,context,self._n,res))
+        return res
+        
     def _alpha(self, context,verbose=False):
         """Get the backoff alpha value for the given context
         """
@@ -338,8 +341,6 @@ class NgramModel(ModelI):
             token = ngram[-1]
             cost=self.logprob(token, context, verbose)  # _negative_
                                                         # log2 prob == cost!
-            if verbose:
-                print("p(%s|%s) = [%s-gram] %7f"%(token,context,self._n,2**-cost))
             e += cost
         if perItem:
             return e/((len(text)+self._padLen)-(self._n - 1))
@@ -360,7 +361,7 @@ class NgramModel(ModelI):
         """
 
         return pow(2.0, self.entropy(text, pad_left=pad_left,
-                   pad_right=pad_right, perItem=True))
+                   pad_right=pad_right, verbose=verbose, perItem=True))
 
     def dump(self, file, logBase=None, precision=7):
         """Dump this model in SRILM/ARPA/Doug Paul format
