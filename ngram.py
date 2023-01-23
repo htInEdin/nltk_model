@@ -317,23 +317,20 @@ class NgramModel(ModelI):
         else:
             return self._model.max()
 
-    def entropy(self, text, pad_left=False, pad_right=False,
-                verbose=False, perItem=False):
+    def entropy(self, text, verbose=False, perItem=False):
         """
         Calculate the approximate cross-entropy of the n-gram model for a
         given evaluation text.
-        This is the average log probability of each item in the text.
+        This is either the sum or the average (see perItem) of the
+        cost (negative log probability) of each item in the text.
 
         :param text: items to use for evaluation
         :type text: iterable(str)
-        :param pad_left: whether to pad the left of each text with an (n-1)-gram of <s> markers
-        :type pad_left: bool
-        :param pad_right: whether to pad the right of each sentence with an </s> marker
-        :type pad_right: bool
-        :param perItem: normalise for length if True
+        :param perItem: normalise for text length if True
         :type perItem: bool
         """
         # This version takes account of padding for greater accuracy
+        #  if the model was built with padding
         # Note that if input is a string, it will be exploded into characters 
         e = 0.0
         for ngram in ingrams(chain(self._lpad, text, self._rpad), self._n):
