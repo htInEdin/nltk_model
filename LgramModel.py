@@ -9,8 +9,6 @@ class LgramModel(NgramModel):
         """
         Default estimator function using WB.
         """
-        # can't be an instance method of NgramModel as they
-        # can't be pickled either.
         res = WittenBellProbDist(fdist, fdist.B() + 1)
         return res
 
@@ -22,6 +20,8 @@ class LgramModel(NgramModel):
 
         :param train: List of strings, which will be converted to list of lists of characters, but more efficiently
         :type train: iter(str)
+
+        For other parameters, see NgramModel.__init__
         """
         if estimator == None:
             assert (not (estimator_args)) and (not (estimator_kwargs)), \
