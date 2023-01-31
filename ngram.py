@@ -9,24 +9,33 @@ import random, collections.abc
 from itertools import chain
 from math import log
 
-from nltk.probability import (ConditionalProbDist, ConditionalFreqDist,
+from nltk.probability import (ConditionalProbDist, ConditionalFreqDist, ProbDistI,
                               MLEProbDist, FreqDist, WittenBellProbDist)
 
 from nltk.util import ngrams as ingrams
+
+from typing import Tuple, List, Iterable, Any, Set, Dict, Callable, Union
 
 try:
     from api import *
 except ImportError:
     from .api import *
 
-def isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
-    # http://stackoverflow.com/a/33024979
+def isclose(a: float, b: float, rel_tol: float = 1e-09, abs_tol: float = 0.0) -> bool:
+    '''
+    Courtesy of http://stackoverflow.com/a/33024979
+
+    Test if two numbers are, as it were, close enough.
+
+    Note that float subsumes int for type-checking purposes,
+    so ints are OK, so e.g. isclose(1,0.999999999999) -> True.
+    '''
     return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
 
-def discount(self):
+def discount(self: WittenBellProbDist) -> float:
     return float(self._N)/float(self._N + self._T)
 
-def check(self):
+def check(self: WittenBellProbDist):
     totProb=sum(self.prob(sample) for sample in self.samples())
     assert isclose(self.discount(),totProb),\
            "discount %s != totProb %s"%(self.discount(),totProb)
@@ -34,7 +43,7 @@ def check(self):
 WittenBellProbDist.discount = discount
 WittenBellProbDist.check = check
 
-def _estimator(fdist, bins):
+def _estimator(fdist: FreqDist, bins: int) -> WittenBellProbDist:
     """
     Default estimator function using WB.
     """
@@ -47,8 +56,10 @@ class NgramModel(ModelI):
     A processing interface for assigning a probability to the next word.
     """
 
-    def __init__(self, n, train, pad_left=False, pad_right=False,
-                 estimator=None, *estimator_args, **estimator_kwargs):
+    def __init__(self, n: int, train: Union[Iterable[str],Iterable[Iterable[str]]],
+                 pad_left: bool = False, pad_right: bool = False,
+                 estimator: Callable[[FreqDist,int],ProbDistI] = None,
+                 *estimator_args, **estimator_kwargs) -> None:
         """
         Creates an ngram language model to capture patterns in n consecutive
         words of training text.  An estimator smooths the probabilities derived
@@ -56,16 +67,11 @@ class NgramModel(ModelI):
         training.
 
         :param n: the order of the language model (ngram size)
-        :type n: C{int}
         :param train: the training text
-        :type train: C{iterable} of C{string} or C{iterable} of C{iterable} of C{string} 
-        :param estimator: a function for generating a probability distribution---defaults to MLEProbDist
-        :type estimator: a function that takes a C{ConditionalFreqDist} and
-              returns a C{ConditionalProbDist}
+        :param estimator: a function for generating a probability distribution.
+                          Defaults to lambda fdist, bins: MLEProbDist(fdist)
         :param pad_left: whether to pad the left of each sentence with an (n-1)-gram of <s>
-        :type pad_left: bool
         :param pad_right: whether to pad the right of each sentence with </s>
-        :type pad_right: bool
         :param estimator_args: Extra arguments for estimator.
             These arguments are usually used to specify extra
             properties for the probability distributions of individual
@@ -73,15 +79,13 @@ class NgramModel(ModelI):
             Note: For backward-compatibility, if no arguments are specified, the
             number of bins in the underlying ConditionalFreqDist are passed to
             the estimator as an argument.
-        :type estimator_args: (any)
         :param estimator_kwargs: Extra keyword arguments for the estimator
-        :type estimator_kwargs: (any)
         """
 
         # protection from cryptic behavior for calling programs
         # that use the pre-2.0.2 interface
-        assert(isinstance(pad_left, bool))
-        assert(isinstance(pad_right, bool))
+        assert isinstance(pad_left, bool)
+        assert isinstance(pad_right, bool)
 
         # make sure n is greater than zero, otherwise print it
         assert (n > 0), n
@@ -99,6 +103,7 @@ class NgramModel(ModelI):
 
         self._N=0
         delta = 1+self._padLen-n        # len(sent)+delta == ngrams in sent
+        self._delta = delta
 
         if estimator == None:
             assert (estimator_args==()) and (estimator_kwargs=={}),\
@@ -199,17 +204,16 @@ class NgramModel(ModelI):
 
                 self._backoff_alphas[ctxt] = alpha_ctxt
 
-    def _words_following(self, context, cond_freq_dist):
+    def _words_following(self, context: Tuple[str], cond_freq_dist: ConditionalFreqDist) -> Iterable[str]:
         return cond_freq_dist[context].keys()
 
-    def prob(self, word, context, verbose=False):
+    def prob(self, word: str, context: Tuple[str], verbose: bool = False) -> float:
         """
-        Evaluate the probability of this word in this context using Katz Backoff.
+        Evaluate the probability of this word in this context.
+        Will use Katz Backoff if the underlying distribution supports that.
 
         :param word: the word to get the probability of
-        :type word: str
         :param context: the context the word is in
-        :type context: list(str)
         """
         assert(isinstance(word,str))
         context = tuple(context)
@@ -240,7 +244,7 @@ class NgramModel(ModelI):
             print("p(%s|%s) = [%s-gram] %7f"%(word,context,self._n,res))
         return res
         
-    def _alpha(self, context,verbose=False):
+    def _alpha(self, context: Tuple[str], verbose: bool = False) -> float:
         """Get the backoff alpha value for the given context
         """
         error_message = "Alphas and backoff are not defined for unigram models"
@@ -255,14 +259,12 @@ class NgramModel(ModelI):
         return res
 
 
-    def logprob(self, word, context,verbose=False):
+    def logprob(self, word: str, context: Tuple[str], verbose: bool = False):
         """
-        Evaluate the (negative) log probability of this word in this context.
+        Compute the (negative) log probability of this word in this context.
 
         :param word: the word to get the probability of
-        :type word: str
         :param context: the context the word is in
-        :type context: list(str)
         """
 
         return -log(self.prob(word, context,verbose), 2)
@@ -338,7 +340,7 @@ class NgramModel(ModelI):
                                                         # log2 prob == cost!
             e += cost
         if perItem:
-            return e/((len(text)+self._padLen)-(self._n - 1))
+            return e/(len(text)+self._delta)
         else:
             return e
 
@@ -440,14 +442,15 @@ def _writeProb(file,logBase,precision,p):
 
 
 class LgramModel(NgramModel):
-    def __init__(self, n, train, pad_left=False, pad_right=False,
-                 estimator=None, *estimator_args, **estimator_kwargs):
+    def __init__(self, n: int, train: Union[Iterable[str],Iterable[Iterable[str]]],
+                 pad_left: bool = False, pad_right: bool = False,
+                 estimator: Callable[[FreqDist,int],ProbDistI] = None,
+                 *estimator_args, **estimator_kwargs) -> None:
         """
         NgramModel (q.v.) slightly tweaked to produce char-grams,
         not word-grams, with a WittenBell default estimator
 
         :param train: List of strings, which will be converted to list of lists of characters, but more efficiently
-        :type train: iter(str)
 
         For other parameters, see NgramModel.__init__
         """
@@ -465,16 +468,17 @@ def teardown_module(module=None):
     from nltk.corpus import brown
     brown._unload()
 
-from nltk.probability import LidstoneProbDist, WittenBellProbDist
-def demo(estimator_function=LidstoneProbDist):
+from nltk.probability import LidstoneProbDist
+
+def demo(estimator_class=LidstoneProbDist):
     from nltk.corpus import brown
-    estimator = lambda fdist, bins: estimator_function(fdist, 0.2, bins+1)
+    estimator = lambda fdist, bins: estimator_class(fdist, 0.2, bins+1)
     lm = NgramModel(3, brown.sents(categories='news'), estimator=estimator,
                     pad_left=True, pad_right=True)
-    print("Built %s using %s as estimator"%(lm,estimator_function))
+    print("Built %s using %s for underlying probability distributions"%(lm,estimator_class))
     txt="There is no such thing as a free lunch ."
     print("Computing average per-token entropy for \"%s\", showing the computation:"%txt)
-    e=lm.entropy(txt.split(),True,True,True,True)
+    e=lm.entropy(txt.split(), verbose=True, perItem=True)
     print("Per-token average: %.2f"%e)
     text = lm.generate(100)
     import textwrap
