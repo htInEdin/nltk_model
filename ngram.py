@@ -14,7 +14,10 @@ from nltk.probability import (ConditionalProbDist, ConditionalFreqDist, ProbDist
 
 from nltk.util import ngrams as ingrams
 
-from typing import Tuple, List, Iterable, Any, Set, Dict, Callable, Union
+from typing import Tuple, List, Iterable, Any, Set, Dict, Callable
+from typing import Union, Optional, Sized, cast, Sequence, TextIO
+
+AlphaDict = Dict[Tuple[str, ...],float]
 
 try:
     from api import *
@@ -35,7 +38,7 @@ def isclose(a: float, b: float, rel_tol: float = 1e-09, abs_tol: float = 0.0) ->
 def discount(self: WittenBellProbDist) -> float:
     return float(self._N)/float(self._N + self._T)
 
-def check(self: WittenBellProbDist):
+def check(self: WittenBellProbDist) -> None:
     totProb=sum(self.prob(sample) for sample in self.samples())
     assert isclose(self.discount(),totProb),\
            "discount %s != totProb %s"%(self.discount(),totProb)
@@ -58,7 +61,7 @@ class NgramModel(ModelI):
 
     def __init__(self, n: int, train: Union[Iterable[str],Iterable[Iterable[str]]],
                  pad_left: bool = False, pad_right: bool = False,
-                 estimator: Callable[[FreqDist,int],ProbDistI] = None,
+                 estimator: Optional[Callable[[FreqDist,int],ProbDistI]] = None,
                  *estimator_args, **estimator_kwargs) -> None:
         """
         Creates an ngram language model to capture patterns in n consecutive
@@ -111,8 +114,8 @@ class NgramModel(ModelI):
             estimator = lambda fdist, bins: MLEProbDist(fdist)
 
         # Given backoff, a generator isn't acceptable
-        if not isinstance(train,collections.abc.Sequence):
-          train=list(train)
+        if not isinstance(train,List):
+          train = list(train)
         self._W = len(train)
         # Coerce to list of list -- note that this means to train charGrams,
         #  requires exploding the words ahead of time 
@@ -204,10 +207,11 @@ class NgramModel(ModelI):
 
                 self._backoff_alphas[ctxt] = alpha_ctxt
 
-    def _words_following(self, context: Tuple[str], cond_freq_dist: ConditionalFreqDist) -> Iterable[str]:
-        return cond_freq_dist[context].keys()
+    def _words_following(self, context: Tuple[str], cond_freq_dist: ConditionalFreqDist) -> Sequence[str]:
+        return cast(Sequence[str], cond_freq_dist[context].keys())
 
-    def prob(self, word: str, context: Tuple[str], verbose: bool = False) -> float:
+    def prob(self, word: str, context: Ctxt,
+             verbose: bool = False) -> float:
         """
         Evaluate the probability of this word in this context.
         Will use Katz Backoff if the underlying distribution supports that.
@@ -215,6 +219,7 @@ class NgramModel(ModelI):
         :param word: the word to get the probability of
         :param context: the context the word is in
         """
+        res: float
         assert(isinstance(word,str))
         context = tuple(context)
         if self.is_unigram_model:
@@ -244,7 +249,8 @@ class NgramModel(ModelI):
             print("p(%s|%s) = [%s-gram] %7f"%(word,context,self._n,res))
         return res
         
-    def _alpha(self, context: Tuple[str], verbose: bool = False) -> float:
+    def _alpha(self, context: Ctxt,
+               verbose: bool = False) -> float:
         """Get the backoff alpha value for the given context
         """
         error_message = "Alphas and backoff are not defined for unigram models"
@@ -259,7 +265,7 @@ class NgramModel(ModelI):
         return res
 
 
-    def logprob(self, word: str, context: Tuple[str], verbose: bool = False):
+    def logprob(self, word: str, context: Ctxt, verbose: bool = False) -> float:
         """
         Compute the (negative) log probability of this word in this context.
 
@@ -270,27 +276,26 @@ class NgramModel(ModelI):
         return -log(self.prob(word, context,verbose), 2)
 
     @property
-    def ngrams(self):
+    def ngrams(self) -> Set[Tuple[str]]:
         return self._ngrams
 
     @property
-    def backoff(self):
+    def backoff(self) -> 'NgramModel':
         return self._backoff
 
     @property
-    def model(self):
+    def model(self) -> Union[ProbDistI,ConditionalProbDist]:
         return self._model
 
     # NB, this will always start with same word since model
     # is trained on a single text
-    def generate(self, num_words, context=()):
+    def generate(self, num_words: int,
+                 context: Ctxt = ()) -> List[List[str]]:
         '''
         Generate random text based on the language model.
 
         :param num_words: number of words to generate
-        :type num_words: int
         :param context: initial words in generated string
-        :type context: list(str)
         '''
 
         orig = list(context)
@@ -307,17 +312,18 @@ class NgramModel(ModelI):
                 text=list(orig)
         return res
 
-    def _generate_one(self, context):
+    def _generate_one(self, context: Ctxt) -> str:
         context = (self._lpad + tuple(context))[-self._n+1:]
         # print "Context (%d): <%s>" % (self._n, ','.join(context))
         if context in self:
-            return self[context].generate()
+            return cast(str,self[context].generate())
         elif self._n > 1:
             return self._backoff._generate_one(context[1:])
         else:
-            return self._model.max()
+            return cast(str,self._model.max())
 
-    def entropy(self, text, verbose=False, perItem=False):
+    def entropy(self, text: Sequence[str], verbose: bool = False,
+                perItem: bool = False) -> float:
         """
         Calculate the approximate cross-entropy of the n-gram model for a
         given evaluation text.
@@ -325,9 +331,7 @@ class NgramModel(ModelI):
         cost (negative log probability) of each item in the text.
 
         :param text: items to use for evaluation
-        :type text: iterable(str)
         :param perItem: normalise for text length if True
-        :type perItem: bool
         """
         # This version takes account of padding for greater accuracy
         #  if the model was built with padding
@@ -344,37 +348,30 @@ class NgramModel(ModelI):
         else:
             return e
 
-    def perplexity(self, text, pad_left=False, pad_right=False, verbose=False):
+    def perplexity(self, text: Sequence[str], verbose: bool = False) -> float:
         """
         Calculates the perplexity of the given text.
         This is simply 2 ** cross-entropy for the text.
 
         :param text: words to calculate perplexity of
-        :type text: list(str)
-        :param pad_left: whether to pad the left of each sentence with an (n-1)-gram of empty strings
-        :type pad_left: bool
-        :param pad_right: whether to pad the right of each sentence with an (n-1)-gram of empty strings
-        :type pad_right: bool
         """
 
-        return pow(2.0, self.entropy(text, pad_left=pad_left,
-                   pad_right=pad_right, verbose=verbose, perItem=True))
+        return pow(2.0, self.entropy(text, verbose=verbose, perItem=True))
 
-    def dump(self, file, logBase=None, precision=7):
+    def dump(self, file: TextIO, logBase: Optional[float] = None,
+             precision: int = 7) -> None:
         """Dump this model in SRILM/ARPA/Doug Paul format
 
         Use logBase=10 and the default precision to get something comparable
         to SRILM ngram-model -lm output
         @param file to dump to
-        @type file file
-        @param logBase If not None, output logBases to the specified base
-        @type logBase int|None"""
+        @param logBase If not None, output logs to the specified base"""
         file.write('\n\\data\\\n')
         self._writeLens(file)
         self._writeModels(file,logBase,precision,None)
         file.write('\\end\\\n')
 
-    def _writeLens(self,file):
+    def _writeLens(self,file: TextIO) -> None:
         if self._n>1:
             self._backoff._writeLens(file)
             file.write('ngram %s=%s\n'%(self._n,
@@ -384,42 +381,46 @@ class NgramModel(ModelI):
             file.write('ngram 1=%s\n'%len(self._model.samples()))
             
 
-    def _writeModels(self,file,logBase,precision,alphas):
+    def _writeModels(self, file: TextIO, logBase: Optional[float],
+                     precision: int, alphas: Optional[AlphaDict]) -> None:
         if self._n>1:
-            self._backoff._writeModels(file,logBase,precision,self._backoff_alphas)
+            self._backoff._writeModels(file, logBase, precision, self._backoff_alphas)
         file.write('\n\\%s-grams:\n'%self._n)
         if self._n==1:
-            self._writeProbs(self._model,file,logBase,precision,(),alphas)
+            self._writeProbs(self._model, file, logBase, precision, (), alphas)
         else:
             for c in sorted(self._model.conditions()):
-                self._writeProbs(self._model[c],file,logBase,precision,
-                                  c,alphas)
+                self._writeProbs(self._model[c], file, logBase, precision, c, alphas)
 
-    def _writeProbs(self,pd,file,logBase,precision,ctxt,alphas):
+    def _writeProbs(self, pd: ProbDistI, file: TextIO, logBase: Optional[float],
+                    precision: int, ctxt: Tuple[str, ...],
+                    alphas: Optional[AlphaDict]) -> None:
         if self._n==1:
             for k in sorted(pd.samples()+['<unk>','<s>']):
                 if k=='<s>':
                     file.write('-99')
                 elif k=='<unk>':
-                    _writeProb(file,logBase,precision,1-pd.discount()) 
+                    _writeProb(file, logBase, precision, 1-pd.discount()) 
                 else:
-                    _writeProb(file,logBase,precision,pd.prob(k))
+                    _writeProb(file, logBase, precision, pd.prob(k))
                 file.write('\t%s'%k)
                 if k not in ('</s>','<unk>'):
                     file.write('\t')
-                    _writeProb(file,logBase,precision,alphas[ctxt+(k,)])
+                    # HST thinks if you try to dump a top-level unigram model
+                    #  this will throw an exception because alphas==None
+                    _writeProb(file, logBase, precision, alphas[ctxt+(k,)])
                 file.write('\n')
         else:
             ctxtString=' '.join(ctxt)
             for k in sorted(pd.samples()):
-                _writeProb(file,logBase,precision,pd.prob(k))
+                _writeProb(file, logBase, precision, pd.prob(k))
                 file.write('\t%s %s'%(ctxtString,k))
                 if alphas != None:
                     file.write('\t')
-                    _writeProb(file,logBase,precision,alphas[ctxt+(k,)])
+                    _writeProb(file, logBase, precision, alphas[ctxt+(k,)])
                 file.write('\n')
 
-    def __contains__(self, item):
+    def __contains__(self, item: Sequence[str]) -> bool:
         item=tuple(item)
         try:
             return item in self._model
@@ -430,21 +431,22 @@ class NgramModel(ModelI):
             except:
                 return item in self._model.samples()
 
-    def __getitem__(self, item):
-        return self._model[tuple(item)]
+    def __getitem__(self, item: Sequence[str]) -> ProbDistI:
+        return cast(ProbDistI,self._model[tuple(item)])
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<NgramModel with %d %d-grams>' % (self._N, self._n)
 
-def _writeProb(file,logBase,precision,p):
-    file.write('%.*g'%(precision,
-                       p if logBase == None else log(p,logBase)))
+def _writeProb(file: TextIO, logBase: Optional[float],
+               precision: int, p: float) -> None:
+    file.write('%.*g'%(precision, 
+                       p if logBase == None else log(p,cast(float,logBase))))
 
 
 class LgramModel(NgramModel):
-    def __init__(self, n: int, train: Union[Iterable[str],Iterable[Iterable[str]]],
+    def __init__(self, n: int, train: Union[Iterable[str],Iterable[Sequence[str]]],
                  pad_left: bool = False, pad_right: bool = False,
-                 estimator: Callable[[FreqDist,int],ProbDistI] = None,
+                 estimator: Optional[Callable[[FreqDist,int],ProbDistI]] = None,
                  *estimator_args, **estimator_kwargs) -> None:
         """
         NgramModel (q.v.) slightly tweaked to produce char-grams,
@@ -464,13 +466,13 @@ class LgramModel(NgramModel):
                                         estimator,
                                         *estimator_args, **estimator_kwargs)
 
-def teardown_module(module=None):
+def teardown_module() -> None:
     from nltk.corpus import brown
     brown._unload()
 
 from nltk.probability import LidstoneProbDist
 
-def demo(estimator_class=LidstoneProbDist):
+def demo(estimator_class: ProbDistI = LidstoneProbDist) -> NgramModel:
     from nltk.corpus import brown
     estimator = lambda fdist, bins: estimator_class(fdist, 0.2, bins+1)
     lm = NgramModel(3, brown.sents(categories='news'), estimator=estimator,
