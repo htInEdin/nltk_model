@@ -396,7 +396,7 @@ class NgramModel(ModelI):
                     precision: int, ctxt: Tuple[str, ...],
                     alphas: Optional[AlphaDict]) -> None:
         if self._n==1:
-            for k in sorted(pd.samples()+['<unk>','<s>']):
+            for k in sorted(chain(pd.samples(),['<unk>','<s>'])):
                 if k=='<s>':
                     file.write('-99')
                 elif k=='<unk>':
@@ -404,20 +404,25 @@ class NgramModel(ModelI):
                 else:
                     _writeProb(file, logBase, precision, pd.prob(k))
                 file.write('\t%s'%k)
-                if k not in ('</s>','<unk>'):
-                    file.write('\t')
-                    # HST thinks if you try to dump a top-level unigram model
-                    #  this will throw an exception because alphas==None
-                    _writeProb(file, logBase, precision, alphas[ctxt+(k,)])
+                if k not in ('<s>','<unk>'):
+                    try:
+                        bv = alphas[ctxt+(k,)]
+                        file.write('\t')
+                        _writeProb(file, logBase, precision, bv)
+                    except (TypeError, KeyError):
+                        pass
                 file.write('\n')
         else:
             ctxtString=' '.join(ctxt)
             for k in sorted(pd.samples()):
                 _writeProb(file, logBase, precision, pd.prob(k))
                 file.write('\t%s %s'%(ctxtString,k))
-                if alphas != None:
+                try:
+                    bv = alphas[ctxt+(k,)]
                     file.write('\t')
-                    _writeProb(file, logBase, precision, alphas[ctxt+(k,)])
+                    _writeProb(file, logBase, precision, bv)
+                except (TypeError, KeyError):
+                    pass
                 file.write('\n')
 
     def __contains__(self, item: Sequence[str]) -> bool:
@@ -444,7 +449,7 @@ def _writeProb(file: TextIO, logBase: Optional[float],
 
 
 class LgramModel(NgramModel):
-    def __init__(self, n: int, train: Union[Iterable[str],Iterable[Sequence[str]]],
+    def __init__(self, n: int, train: Iterable[str],
                  pad_left: bool = False, pad_right: bool = False,
                  estimator: Optional[Callable[[FreqDist,int],ProbDistI]] = None,
                  *estimator_args, **estimator_kwargs) -> None:
